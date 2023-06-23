@@ -1,7 +1,7 @@
 use clap::{value_parser, Parser};
-use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Config, KqueueWatcher, RecursiveMode, Watcher};
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Seek, SeekFrom};
+use std::io::{self, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 
@@ -12,11 +12,13 @@ struct Args {
     path: PathBuf,
 }
 
+mod processor;
+
 fn main() -> io::Result<()> {
     let args = Args::parse();
 
     let (tx, rx) = channel();
-    let mut watcher = RecommendedWatcher::new(tx, Config::default()).unwrap();
+    let mut watcher = KqueueWatcher::new(tx, Config::default()).unwrap();
 
     // Add a path to be watched.
     watcher
@@ -27,34 +29,14 @@ fn main() -> io::Result<()> {
     file.seek(SeekFrom::End(0))?; // start reading from the end of file
 
     let mut reader = BufReader::new(file);
+    let mut parser = processor::init_parser();
 
     loop {
         match rx.recv() {
             Ok(_) => {
-                print_sql(&mut reader)?;
+                processor::process(&mut reader, &mut parser)?;
             }
             Err(e) => println!("watch error: {:?}", e),
-        }
-    }
-}
-
-fn print_sql(reader: &mut BufReader<File>) -> io::Result<()> {
-    let mut line = String::new();
-
-    loop {
-        match reader.read_line(&mut line)? {
-            0 => return Ok(()),
-            _ => {
-                // TODO probably better still to use a treesitter grammar + highlights
-                let formatted = sqlformat::format(
-                    &line[52..], // TODO could actually regex out the irrelevant stuff
-                    &sqlformat::QueryParams::None,
-                    sqlformat::FormatOptions::default(),
-                );
-                println!("{}", formatted);
-                println!("{}", "\n");
-                line.clear();
-            }
         }
     }
 }

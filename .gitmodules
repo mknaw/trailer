@@ -1,0 +1,3 @@
+[submodule "tree-sitter-sql"]
+	path = tree-sitter-sql
+	url = https://github.com/DerekStride/tree-sitter-sql.git
